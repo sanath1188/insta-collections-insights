@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+collection_id = os.getenv("COLLECTION_ID")
 
 def fetch_collection_posts(collection_id, cookies_header, csv_filename):
     base_url = f"https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/"
@@ -64,6 +65,7 @@ def fetch_collection_posts(collection_id, cookies_header, csv_filename):
         writer.writeheader()
 
         while True:
+            print("max_id", {max_id})
             params = {"max_id": max_id} if max_id else {}
             try:
                 response = session.get(base_url, headers=headers, params=params)
@@ -96,8 +98,8 @@ def fetch_collection_posts(collection_id, cookies_header, csv_filename):
                 reel_url = f"https://www.instagram.com/reel/{code}/" if code else "Unknown URL"
                 
                 print(f"Reel URL: {reel_url}")
-                print(f"Caption: {caption_text}")
-                print("-" * 40)
+                # print(f"Caption: {caption_text}")
+                # print("-" * 40)
 
                 # Write to CSV
                 writer.writerow({'Reel URL': reel_url, 'Caption': caption_text})
@@ -121,7 +123,7 @@ if __name__ == "__main__":
         exit(1)
 
     # Replace with your actual collection ID
-    collection_id = "18018296677509675" # Example, replace with your target collection ID
+    collection_id = collection_id # Example, replace with your target collection ID
     csv_filename = "instagram_collection_posts.csv" # Name of the output CSV file
 
     print(f"Fetching posts for collection ID: {collection_id}")
