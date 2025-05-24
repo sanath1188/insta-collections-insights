@@ -2,7 +2,7 @@ import csv
 import os
 import requests
 import time
-import json # MODIFICATION: Import the standard json library
+import json
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -18,7 +18,8 @@ GEMINI_API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/mode
 GEMINI_MODEL_NAME = "gemini-1.5-pro-latest"
 
 def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
-    default_location = {"place_name": None, "city": None, "state": None}
+    # MODIFICATION: Added country to default location
+    default_location = {"place_name": None, "city": None, "state": None, "country": None}
     if not caption_text or not caption_text.strip():
         print("Skipping Gemini: Caption is empty or whitespace.")
         return default_location
@@ -29,18 +30,25 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
 
     gemini_api_url = GEMINI_API_URL_TEMPLATE.format(model_name=GEMINI_MODEL_NAME, api_key=api_key)
 
+    # MODIFICATION: Updated system instruction for smarter extraction and country
     system_instruction_text = (
         "From the provided text, extract the specific name of the place (e.g., restaurant name, park name, landmark name), "
-        "the city, and the state or region. If any piece of information is not present or cannot be clearly identified, "
-        "return null for that specific field. Focus on explicit mentions of locations."
+        "the city, the state or region, and the country. "
+        "If any piece of information is not present or cannot be clearly identified, try to infer missing information smartly from the context. "
+        "For example, if the state is not explicitly mentioned but the city is, infer the state and country from the city. "
+        "Similarly, if Jayanagar is mentioned, recognize it as an area within Bangalore city, Karnataka state, India. "
+        "Focus on explicit mentions of locations and reasonable inferences. "
+        "Return null for any field that cannot be determined or confidently inferred."
     )
     
+    # MODIFICATION: Updated response schema to include country
     response_schema = {
         "type": "OBJECT",
         "properties": {
             "place_name": {"type": "STRING", "nullable": True, "description": "The specific name of the location/venue mentioned."},
             "city": {"type": "STRING", "nullable": True, "description": "The city where the place is located."},
-            "state": {"type": "STRING", "nullable": True, "description": "The state, province, or region where the city is located."}
+            "state": {"type": "STRING", "nullable": True, "description": "The state, province, or region where the city is located."},
+            "country": {"type": "STRING", "nullable": True, "description": "The country where the place is located."} # Added country
         }
     }
 
@@ -55,7 +63,7 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
         "contents": [{"role": "user", "parts": [{"text": caption_text}]}],
         "systemInstruction": {"role": "system", "parts": [{"text": system_instruction_text}]},
         "generationConfig": {
-            "temperature": 0.2,
+            "temperature": 0.3, # Slightly increased temperature for more inferential power, but still low for factuality
             "maxOutputTokens": 512,
             "responseMimeType": "application/json",
             "responseSchema": response_schema,
@@ -65,18 +73,18 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
 
     try:
         print(f"Sending request to Gemini for caption: '{caption_text[:70]}...'")
-        response = requests.post(gemini_api_url, json=request_body, timeout=30)
+        response = requests.post(gemini_api_url, json=request_body, timeout=45) # Increased timeout slightly
         
         if response.status_code != 200:
             print(f"Gemini API Error: Status Code {response.status_code}")
             try:
-                error_details = response.json() # Use response.json() directly for parsing error body
+                error_details = response.json()
                 print(f"Gemini API Error Body: {error_details}")
-            except json.JSONDecodeError: # MODIFICATION: Use json.JSONDecodeError
+            except json.JSONDecodeError:
                 print(f"Gemini API Error Body (text): {response.text}")
             response.raise_for_status()
 
-        response_data = response.json() # Use response.json() to parse successful response
+        response_data = response.json()
         
         candidates = response_data.get("candidates", [])
         if candidates:
@@ -84,13 +92,14 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
             if content_parts:
                 extracted_text = content_parts[0].get("text")
                 if extracted_text:
-                    # MODIFICATION: Use json.loads for parsing the extracted text string
                     location_data = json.loads(extracted_text) 
                     print(f"Gemini extracted: {location_data}")
+                    # MODIFICATION: Include country in returned dict
                     return {
                         "place_name": location_data.get("place_name"),
                         "city": location_data.get("city"),
                         "state": location_data.get("state"),
+                        "country": location_data.get("country") 
                     }
         print(f"Warning: Could not parse location from Gemini response. Response: {response_data}")
         return default_location
@@ -98,13 +107,9 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
     except requests.exceptions.RequestException as e:
         print(f"Error calling Gemini API: {e}") 
         return default_location
-    # MODIFICATION: Use json.JSONDecodeError for catching JSON parsing errors from extracted_text
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e: 
         print(f"Error parsing Gemini response or extracted text: {e}. Extracted text was: '{extracted_text if 'extracted_text' in locals() else 'N/A'}' Response text: {response.text if 'response' in locals() and hasattr(response, 'text') else 'N/A'}")
         return default_location
-
-# The rest of your script (fetch_collection_posts, __main__) remains the same.
-# Ensure this updated get_location_from_gemini function is used.
 
 def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filename):
     if not collection_id:
@@ -160,7 +165,8 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
     session.cookies.update(insta_cookies)
 
     with open(csv_filename, mode='w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Reel URL', 'Caption', 'Place Name', 'City', 'State']
+        # MODIFICATION: Added 'Country' to fieldnames
+        fieldnames = ['Reel URL', 'Caption', 'Place Name', 'City', 'State', 'Country']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -178,8 +184,8 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
                 break
             
             try:
-                data = response.json() # Use response.json() for Instagram API response
-            except json.JSONDecodeError: # Use json.JSONDecodeError for Instagram API response
+                data = response.json()
+            except json.JSONDecodeError:
                 print(f"Failed to decode Instagram JSON response. Status: {response.status_code}, Text: {response.text[:200]}")
                 break
 
@@ -201,18 +207,20 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
                 
                 print(f"\nProcessing Instagram item {item_count}: {reel_url}")
 
-                location_info = get_location_from_gemini(caption_text, GEMINI_API_KEY) # Corrected variable name
-                if GEMINI_API_KEY and caption_text.strip(): # Corrected variable name
-                     time.sleep(0.5) 
+                location_info = get_location_from_gemini(caption_text, GEMINI_API_KEY)
+                if GEMINI_API_KEY and caption_text.strip():
+                     time.sleep(0.6) # Slightly increased delay if needed for more complex Gemini tasks
 
+                # MODIFICATION: Added country to CSV row
                 writer.writerow({
                     'Reel URL': reel_url,
                     'Caption': caption_text,
                     'Place Name': location_info.get('place_name'),
                     'City': location_info.get('city'),
-                    'State': location_info.get('state')
+                    'State': location_info.get('state'),
+                    'Country': location_info.get('country') 
                 })
-                print(f"Saved to CSV: URL: {reel_url}, Place: {location_info.get('place_name')}, City: {location_info.get('city')}, State: {location_info.get('state')}")
+                print(f"Saved to CSV: URL: {reel_url}, Place: {location_info.get('place_name')}, City: {location_info.get('city')}, State: {location_info.get('state')}, Country: {location_info.get('country')}")
 
             if not data.get("more_available", False):
                 print("Instagram API indicates no more items available.")
