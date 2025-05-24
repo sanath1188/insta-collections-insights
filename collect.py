@@ -18,7 +18,6 @@ GEMINI_API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/mode
 GEMINI_MODEL_NAME = "gemini-1.5-pro-latest"
 
 def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
-    # MODIFICATION: Added country to default location
     default_location = {"place_name": None, "city": None, "state": None, "country": None}
     if not caption_text or not caption_text.strip():
         print("Skipping Gemini: Caption is empty or whitespace.")
@@ -30,7 +29,6 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
 
     gemini_api_url = GEMINI_API_URL_TEMPLATE.format(model_name=GEMINI_MODEL_NAME, api_key=api_key)
 
-    # MODIFICATION: Updated system instruction for smarter extraction and country
     system_instruction_text = (
         "From the provided text, extract the specific name of the place (e.g., restaurant name, park name, landmark name), "
         "the city, the state or region, and the country. "
@@ -41,14 +39,13 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
         "Return null for any field that cannot be determined or confidently inferred."
     )
     
-    # MODIFICATION: Updated response schema to include country
     response_schema = {
         "type": "OBJECT",
         "properties": {
             "place_name": {"type": "STRING", "nullable": True, "description": "The specific name of the location/venue mentioned."},
             "city": {"type": "STRING", "nullable": True, "description": "The city where the place is located."},
             "state": {"type": "STRING", "nullable": True, "description": "The state, province, or region where the city is located."},
-            "country": {"type": "STRING", "nullable": True, "description": "The country where the place is located."} # Added country
+            "country": {"type": "STRING", "nullable": True, "description": "The country where the place is located."}
         }
     }
 
@@ -63,7 +60,7 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
         "contents": [{"role": "user", "parts": [{"text": caption_text}]}],
         "systemInstruction": {"role": "system", "parts": [{"text": system_instruction_text}]},
         "generationConfig": {
-            "temperature": 0.3, # Slightly increased temperature for more inferential power, but still low for factuality
+            "temperature": 0.3,
             "maxOutputTokens": 512,
             "responseMimeType": "application/json",
             "responseSchema": response_schema,
@@ -73,7 +70,7 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
 
     try:
         print(f"Sending request to Gemini for caption: '{caption_text[:70]}...'")
-        response = requests.post(gemini_api_url, json=request_body, timeout=45) # Increased timeout slightly
+        response = requests.post(gemini_api_url, json=request_body, timeout=45)
         
         if response.status_code != 200:
             print(f"Gemini API Error: Status Code {response.status_code}")
@@ -94,7 +91,6 @@ def get_location_from_gemini(caption_text: str, api_key: str) -> dict:
                 if extracted_text:
                     location_data = json.loads(extracted_text) 
                     print(f"Gemini extracted: {location_data}")
-                    # MODIFICATION: Include country in returned dict
                     return {
                         "place_name": location_data.get("place_name"),
                         "city": location_data.get("city"),
@@ -164,9 +160,10 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
                 insta_cookies[k] = v
     session.cookies.update(insta_cookies)
 
+    # Fieldnames defined once, used by DictWriter and sorter
+    fieldnames = ['Reel URL', 'Caption', 'Place Name', 'City', 'State', 'Country']
+
     with open(csv_filename, mode='w', newline='', encoding='utf-8') as csvfile:
-        # MODIFICATION: Added 'Country' to fieldnames
-        fieldnames = ['Reel URL', 'Caption', 'Place Name', 'City', 'State', 'Country']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -209,17 +206,17 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
 
                 location_info = get_location_from_gemini(caption_text, GEMINI_API_KEY)
                 if GEMINI_API_KEY and caption_text.strip():
-                     time.sleep(0.6) # Slightly increased delay if needed for more complex Gemini tasks
+                     time.sleep(0.6)
 
-                # MODIFICATION: Added country to CSV row
-                writer.writerow({
+                row_data = {
                     'Reel URL': reel_url,
                     'Caption': caption_text,
                     'Place Name': location_info.get('place_name'),
                     'City': location_info.get('city'),
                     'State': location_info.get('state'),
                     'Country': location_info.get('country') 
-                })
+                }
+                writer.writerow(row_data)
                 print(f"Saved to CSV: URL: {reel_url}, Place: {location_info.get('place_name')}, City: {location_info.get('city')}, State: {location_info.get('state')}, Country: {location_info.get('country')}")
 
             if not data.get("more_available", False):
@@ -233,6 +230,38 @@ def fetch_collection_posts(collection_id, cookies_header, gemini_key, csv_filena
             # time.sleep(0.5)
 
     print(f"\nData fetching complete. {item_count} items processed. Output saved to {csv_filename}")
+    return fieldnames # Return fieldnames for sorter
+
+
+# MODIFICATION: New function to sort the CSV file
+def sort_csv_file(filename: str, fieldnames: list, sort_by_keys: list):
+    """
+    Sorts a CSV file by the specified keys.
+    Handles None values by treating them as empty strings for sorting.
+    """
+    try:
+        with open(filename, mode='r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            data = list(reader)
+
+        # Sort data: Treat None as empty string '' for sorting to avoid type errors
+        # and ensure consistent sorting (None/empty usually comes first).
+        def sort_key_func(row):
+            return tuple(str(row.get(key) or '').lower() for key in sort_by_keys)
+            # Using .lower() for case-insensitive sorting of location names
+
+        data.sort(key=sort_key_func)
+
+        with open(filename, mode='w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(data)
+        print(f"CSV file '{filename}' sorted successfully by {', '.join(sort_by_keys)}.")
+
+    except FileNotFoundError:
+        print(f"Error: CSV file '{filename}' not found for sorting.")
+    except Exception as e:
+        print(f"An error occurred during CSV sorting: {e}")
 
 
 if __name__ == "__main__":
@@ -253,4 +282,13 @@ if __name__ == "__main__":
     else:
         print("Warning: GEMINI_API_KEY not found. Location data will not be fetched.")
 
-    fetch_collection_posts(COLLECTION_ID, IG_COOKIES, GEMINI_API_KEY, csv_filename)
+    # Fetch posts and get fieldnames
+    all_fieldnames = fetch_collection_posts(COLLECTION_ID, IG_COOKIES, GEMINI_API_KEY, csv_filename)
+
+    # MODIFICATION: Sort the CSV file after fetching
+    if all_fieldnames: # Ensure fetch_collection_posts ran and returned fieldnames
+        sort_keys = ['Country', 'State', 'City']
+        print(f"\nAttempting to sort CSV file by {', '.join(sort_keys)}...")
+        sort_csv_file(csv_filename, all_fieldnames, sort_keys)
+    else:
+        print("Skipping CSV sorting as data fetching might have failed or produced no data.")
