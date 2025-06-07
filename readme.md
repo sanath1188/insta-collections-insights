@@ -40,12 +40,13 @@ pip install -r requirements.txt
     If this script is part of a Git repository, clone it. Otherwise, download the `collect.py` file to your local machine.
 
 2.  **Create and Configure the `.env` File**:
-    In the same directory as `collect.py`, create a file named `.env`. Add the following lines to this file, replacing the placeholder values with your actual information:
+    In the same directory as `collect.py`, create a file named `.env`. Add the following lines to this file, replacing the placeholder values with your actual information. Use .env.sample for easy setup.
 
     ```
     IG_COOKIES="your_full_instagram_cookie_string_here"
-    COLLECTION_ID="your_instagram_collection_id_here"
-    COLLECTION_NAME="YourCollectionNameHere" # e.g., MyTravels, FoodAdventures (no spaces/special chars for filename)
+    #Leave the collection vars empty here.
+    COLLECTION_ID=""
+    COLLECTION_NAME=""
     GEMINI_API_KEY="your_google_gemini_api_key_here"
     ```
 
@@ -64,39 +65,53 @@ pip install -r requirements.txt
         8.  Copy the **entire string value** associated with the `cookie:` header. This value is what you need for `IG_COOKIES`. It will be a long string containing multiple `key=value;` pairs.
             _Tip: Some browsers offer a "Copy as cURL" option for requests. You can paste this into a text editor and extract the cookie string from the `-b` or `--cookie` argument._
 
-    - **`COLLECTION_ID`**: The unique numerical identifier for the Instagram collection you wish to process.
+    - **`GEMINI_API_KEY`**: Your API key for accessing Google's Gemini API.
+      - You can generate an API key from [Google AI Studio](https://aistudio.google.com/app/apikey) by creating a new project if needed.
+
+4.  **Create a `collections.json` File**:
+    Create a `collections.json` file in the same directory with the following structure:
+
+    ```json
+    {
+    	"collections": [
+    		{ "id": "your_instagram_collection_id_1", "name": "CollectionName1" },
+    		{ "id": "your_instagram_collection_id_2", "name": "CollectionName2" }
+    		// Add more collections as needed
+    	]
+    }
+    ```
+
+    - **`id`**: The unique numerical identifier for the Instagram collection you wish to process.
 
       - **How to obtain**:
         1.  On Instagram's website, go to your profile page.
         2.  Click on the "Saved" tab (bookmark icon).
         3.  Open the specific collection you want to target.
         4.  Observe the URL in your browser's address bar. It will typically look like: `https://www.instagram.com/your_username/saved/your_collection_name/18012345678901234/`.
-        5.  The long number at the end (e.g., `18012345678901234`) is the `COLLECTION_ID`.
+        5.  The long number at the end (e.g., `18012345678901234`) is the `id`.
 
-    - **`COLLECTION_NAME`**: A descriptive name for your collection (e.g., `TravelEurope`, `FoodieFinds`, `ArchitectureInspirations`). This name will be part of the output CSV filename. **Important**: Use a name that is safe for filenames (avoid spaces, slashes, and other special characters; underscores or hyphens are good alternatives).
-
-    - **`GEMINI_API_KEY`**: Your API key for accessing Google's Gemini API.
-      - You can generate an API key from [Google AI Studio](https://aistudio.google.com/app/apikey) by creating a new project if needed.
+    - **`name`**: A descriptive name for your collection (e.g., `TravelEurope`, `FoodieFinds`, `ArchitectureInspirations`). This name will be part of the output CSV filename. **Important**: Use a name that is safe for filenames (avoid spaces, slashes, and other special characters; underscores or hyphens are good alternatives).
 
 ## Usage
 
 After setting up the prerequisites and configuring your `.env` file, you can run the script from your terminal:
 
 ```
-python collect.py
+python run_collections.py
 ```
 
 The script will then:
 
-1.  Display the target Instagram Collection ID and the name of the CSV file it will be working with.
-2.  If the CSV file exists, it will read previously processed Reel URLs to avoid duplication.
-3.  Begin fetching posts from the specified Instagram collection page by page.
-4.  For each newly encountered post:
+1.  Loop over all collections you've mentioned in the collections.json file.
+2.  Display the target Instagram Collection ID and the name of the CSV file it will be working with.
+3.  If the CSV file exists, it will read previously processed Reel URLs to avoid duplication.
+4.  Begin fetching posts from the specified Instagram collection page by page.
+5.  For each newly encountered post:
     - If its Reel URL is not already in the CSV, it will send the post's caption to the Gemini API for location analysis.
     - Log the extracted location details (Place Name, City, State, Country).
     - Append the post's information to the CSV file.
     - If a post is already in the CSV, it will be skipped.
-5.  Once all new posts for the current run have been processed and appended, the script will sort the entire CSV file by Country, then State, then City.
+6.  Once all new posts for the current run have been processed and appended, the script will sort the entire CSV file by Country, then State, then City.
 
 ## Output File
 
@@ -143,3 +158,11 @@ The Python script is structured with several key functions:
 - **API Rate Limiting**: Both Instagram and the Google Gemini API enforce rate limits to prevent abuse. If you process extremely large collections or run the script very frequently in short bursts, you might encounter temporary throttling or blocks. The script incorporates small delays (`time.sleep`) to be a good API citizen, but these may need adjustment for very high-volume use.
 - **Instagram Cookie Expiration**: The `IG_COOKIES` value represents your browser session with Instagram. These cookies expire after some time. If you start encountering authentication-related errors or empty responses from Instagram, you will likely need to refresh your `IG_COOKIES` value in the `.env` file by repeating the "How to obtain" steps.
 - **Google Gemini API Quotas & Costs**: Be aware of your Google Gemini API usage. Depending on your Google Cloud project settings and the volume of requests, usage might fall under free tier limits or incur costs. Monitor your usage in the Google Cloud Console.
+
+## Upcoming Features
+
+- **Error Handling Enhancements**: Improve error handling to provide more detailed feedback on failures during data collection.
+- **Logging**: Implement logging functionality to keep track of the processing status and any issues encountered during execution.
+- **User Interface**: Develop a simple user interface to allow users to manage collections and view results more easily.
+- **Data Export Options**: Add functionality to export collected data in various formats (e.g., CSV, JSON) for easier analysis and sharing.
+- **Multi-Collection Processing**: Explore options for processing multiple collections in parallel while respecting API rate limits.

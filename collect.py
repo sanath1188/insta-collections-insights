@@ -14,6 +14,9 @@ COLLECTION_ID = os.getenv("COLLECTION_ID")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+print("COLLECTION_ID:", os.getenv("COLLECTION_ID"))
+print("COLLECTION_NAME:", os.getenv("COLLECTION_NAME"))
+
 # --- Gemini API Configuration ---
 GEMINI_API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 GEMINI_MODEL_NAME = "gemini-1.5-pro-latest"
